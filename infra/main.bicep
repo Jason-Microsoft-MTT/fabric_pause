@@ -38,11 +38,9 @@ module resources './resources.bicep' = {
   scope: rg
   params: {
     fabricName: 'fabric${resourceToken}'
-    evhubnamespace: 'evhub${resourceToken}'
-    evhubname: 'evhub${resourceToken}'
     location: location
     admin: adminalias
-    sku: 'F2'
+    sku: 'F8'
   }
 }
 

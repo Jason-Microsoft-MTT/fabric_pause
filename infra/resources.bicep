@@ -12,12 +12,6 @@ param sku string
 @description('Allocates a unique name for the Fabric capacity')
 param fabricName string
 
-@description('Allocates a unique name for the EventHub namespace')
-param evhubnamespace string
-
-@description('Allocates a unique name for the EventHub')
-param evhubname string
-
 
 resource fabric 'Microsoft.Fabric/capacities@2023-11-01' = {
   location: location
@@ -57,26 +51,11 @@ resource logicapp_pause_fabric 'Microsoft.Logic/workflows@2019-05-01' = {
         }
       }
       triggers: {
-        Every_15_minutes: {
+        Every_4_hours: {
           recurrence: {
-            frequency: 'Week'
-            interval: 1
-            schedule: {
-              hours: [
-                '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23'
-              ]
-              minutes: [
-                0, 15, 30, 45
-              ]
-              weekDays: [
-                'Monday'
-                'Tuesday'
-                'Wednesday'
-                'Thursday'
-                'Friday'
-              ]
-            }
-            timeZone: 'Romance Standard Time'
+            frequency: 'Hour'
+            interval: 4
+            timeZone: 'UTC'
           }
           type: 'Recurrence'
         }
@@ -214,171 +193,6 @@ resource logicapp_pause_fabric 'Microsoft.Logic/workflows@2019-05-01' = {
   }
 }
 
-resource EventHubNameSpace 'Microsoft.EventHub/namespaces@2024-05-01-preview' = {
-  name: evhubnamespace
-  location: location
-  sku: {
-    name: 'Basic'
-    tier: 'Basic'
-    capacity: 1
-  }
-  properties: {
-    geoDataReplication: {
-      maxReplicationLagDurationInSeconds: 0
-      locations: [
-        {
-          locationName: location
-          roleType: 'Primary'
-        }
-      ]
-    }
-    minimumTlsVersion: '1.2'
-    publicNetworkAccess: 'Enabled'
-    disableLocalAuth: true
-    zoneRedundant: true
-    isAutoInflateEnabled: false
-    maximumThroughputUnits: 0
-    kafkaEnabled: true
-  }
-}
-
-resource EventHub 'Microsoft.EventHub/namespaces/eventhubs@2024-05-01-preview' = {
-  parent: EventHubNameSpace
-  name: evhubname
-  properties: {
-    messageTimestampDescription: {
-      timestampType: 'LogAppend'
-    }
-    retentionDescription: {
-      cleanupPolicy: 'Delete'
-      retentionTimeInHours: 2
-    }
-    messageRetentionInDays: 1
-    partitionCount: 1
-    status: 'Active'
-  }
-}
-
-resource EventHubNameSpaceNetworkrulesets 'Microsoft.EventHub/namespaces/networkrulesets@2024-05-01-preview' = {
-  parent: EventHubNameSpace
-  name: 'default'
-  properties: {
-    publicNetworkAccess: 'Enabled'
-    defaultAction: 'Allow'
-    virtualNetworkRules: []
-    ipRules: []
-    trustedServiceAccessEnabled: false
-  }
-}
-
-resource apiConnection 'Microsoft.Web/connections@2016-06-01' = {
-  name: 'eventhubsconnection'
-  location: location 
-  properties: {
-    api: {
-      id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'eventhubs')
-    }
-    displayName: 'logicapp_pull_iss'
-    parameterValueSet: {
-      name: 'managedIdentityAuth'
-      values: {
-        namespaceEndpoint: {
-          value: 'sb://${EventHubNameSpace.name}.servicebus.windows.net'
-        }
-      }
-    }
-  }
-}
-
-resource logicapp_pull_iss 'Microsoft.Logic/workflows@2017-07-01' = {
-  name: 'logicapp_pull_iss'
-  location: location
-  identity: {
-    type: 'SystemAssigned'
-  }
-  properties: {
-    state: 'Enabled'
-    definition: {
-      '$schema': 'https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#'
-      contentVersion: '1.0.0.0'
-      parameters: {
-        '$connections': {
-          defaultValue: {}
-          type: 'Object'
-        }
-      }
-      triggers: {
-        Recurrence: {
-          recurrence: {
-            interval: 5
-            frequency: 'Second'
-            timeZone: 'UTC'
-          }
-          evaluatedRecurrence: {
-            interval: 5
-            frequency: 'Second'
-            timeZone: 'UTC'
-          }
-          type: 'Recurrence'
-        }
-      }
-      actions: {
-        HTTP: {
-          runAfter: {}
-          type: 'Http'
-          inputs: {
-            uri: 'https://api.wheretheiss.at/v1/satellites/25544'
-            method: 'GET'
-          }
-          runtimeConfiguration: {
-            contentTransfer: {
-              transferMode: 'Chunked'
-            }
-          }
-        }
-        Send_event: {
-          runAfter: {
-            HTTP: [
-              'Succeeded'
-            ]
-          }
-          type: 'ApiConnection'
-          inputs: {
-            host: {
-                connection: {
-                  name: '@parameters(\'$connections\')[\'eventhubs\'][\'connectionId\']'
-                }
-            }
-            method: 'post'
-            body: {
-              ContentData: '@base64(body(\'HTTP\'))'
-            }
-            path: '/@{encodeURIComponent(\'${EventHub.name}\')}/events'
-          }
-        }
-      }
-      outputs: {}
-    }
-    parameters: {
-       '$connections': {
-        value: {
-          eventhubs: {
-            id: subscriptionResourceId('Microsoft.Web/locations/managedApis', location, 'eventhubs')
-            connectionId: apiConnection.id 
-            connectionName: 'eventhubs'
-            connectionProperties: {
-              authentication: {
-                type: 'ManagedServiceIdentity'
-              }
-            }
-          }
-        }
-       }
-    }
-  }
-}
-  
-
 // Assign Contributor permissions to the Resource Group, which allows Logic App to access the Fabric resource
 resource LogicAppFabricRBAC 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
   name: guid(concat(resourceGroup().id), logicapp_pause_fabric.id, 'b24988ac-6180-42a0-ab88-20f7382dd24c')
@@ -386,17 +200,6 @@ resource LogicAppFabricRBAC 'Microsoft.Authorization/roleAssignments@2020-04-01-
     roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Contributor
     principalId: reference(logicapp_pause_fabric.id, '2017-07-01', 'full').identity.principalId
     scope: resourceGroup().id
-    principalType: 'ServicePrincipal'
-  }
-}
-
-// Assign Azure Event Hubs Data Sender role to logicapp_pull_iss for EventHub namespace access
-resource LogicAppEventHubRBAC 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(EventHubNameSpace.id, logicapp_pull_iss.id, '2b629674-e913-4c01-ae53-ef4638d8f975')
-  scope: EventHubNameSpace
-  properties: {
-    roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', '2b629674-e913-4c01-ae53-ef4638d8f975') // Azure Event Hubs Data Sender
-    principalId: reference(logicapp_pull_iss.id, '2017-07-01', 'full').identity.principalId
     principalType: 'ServicePrincipal'
   }
 }
