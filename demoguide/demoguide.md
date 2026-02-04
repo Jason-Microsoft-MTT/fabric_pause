@@ -62,6 +62,9 @@ This capacity size should allow for most sample data scenarios in any Fabric wor
 <img src="https://raw.githubusercontent.com/petender/issdata/refs/heads/main/demoguide/Create_Workspace.png" alt="ISS Create Fabric Workspace" style="width:70%;">
 <br></br>
 
+#### Resizing Capacity
+
+- If you find costs are too high or processing is running slower than expected based on Trial F64, you can always navigate back to the Azure resource and resize at any SKU at any time.
 
 
 
