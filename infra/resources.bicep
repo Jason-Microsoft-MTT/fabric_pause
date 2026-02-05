@@ -199,7 +199,6 @@ resource LogicAppFabricRBAC 'Microsoft.Authorization/roleAssignments@2020-04-01-
   properties: {
     roleDefinitionId: resourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Contributor
     principalId: reference(logicapp_pause_fabric.id, '2017-07-01', 'full').identity.principalId
-    scope: resourceGroup().id
     principalType: 'ServicePrincipal'
   }
 }
